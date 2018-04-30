@@ -14,7 +14,7 @@ from boundary_check import BoundaryCheck
 # -------------------------------------
 # inputs
 
-stages = "12"
+stages = "2"
 
 version_input = (1, 3, 1)
 
@@ -214,32 +214,40 @@ if "2" in stages:
         bc = BoundaryCheck(row['shapefile'])
 
         try:
-            state.at[ix, 'valid_proj'] = bc.projection_check()
+            valid, error  = bc.projection_check()
+            state.at[ix, 'valid_proj'] = valid
+            state.at[ix, 'error_proj'] = error
         except Exception as e:
             print e
-            state['error_proj'] = e
             state.at[ix, 'valid_proj'] = False
+            state.at[ix, 'error_proj'] = e
 
         try:
-            state.at[ix, 'valid_bnds'] = bc.boundary_check()
+            valid, error  = bc.boundary_check()
+            state.at[ix, 'valid_bnds'] = valid
+            state.at[ix, 'error_bnds'] = error
         except Exception as e:
             print e
-            state['error_bnds'] = e
             state.at[ix, 'valid_bnds'] = False
+            state.at[ix, 'error_bnds'] = e
 
         try:
-            state.at[ix, 'valid_shapely'] = bc.shapely_check()
+            valid, error  = bc.shapely_check()
+            state.at[ix, 'valid_shapely'] = valid
+            state.at[ix, 'error_shapely'] = error
         except Exception as e:
             print e
-            state['error_shapely'] = e
             state.at[ix, 'valid_shapely'] = False
+            state.at[ix, 'error_shapely'] = e
 
         try:
-            state.at[ix, 'valid_mongo'] = bc.mongo_check(c_features)
+            valid, error = bc.mongo_check(c_features)
+            state.at[ix, 'valid_mongo'] = valid
+            state.at[ix, 'error_mongo'] = error
         except Exception as e:
             print e
-            state['error_mongo'] = e
             state.at[ix, 'valid_mongo'] = False
+            state.at[ix, 'error_mongo'] = e
 
         bc.close()
 

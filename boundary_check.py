@@ -17,6 +17,7 @@ class BoundaryCheck:
         self.shps.close()
 
     def projection_check(self):
+        error = None
         driver = ogr.GetDriverByName('ESRI Shapefile')
         dataset = driver.Open(self.path)
 
@@ -33,34 +34,52 @@ class BoundaryCheck:
         geogcs_passlist = ['GCS_WGS_1984', 'WGS84']
 
         valid = (projection is None) and (geogcs in geogcs_passlist)
-
-        return valid
+        if not valid:
+            if projection is not None and geogcs not in geogcs_passlist:
+                error = "geogcs: {0}, projection: {1}".format(geogcs, projection)
+            elif projection is not None:
+                error = "projection: {0}".format(projection)
+            else:
+                error = "geogcs: {0}".format(geogcs)
+        return valid, error
 
 
     def boundary_check(self):
+        error = None
         xmin, ymin, xmax, ymax = self.shps.bounds
         valid = (xmin >= -180) and (xmax <= 180) and (ymin >= -90) and (ymax <= 90)
-        return valid
+        if not valid:
+            error = "xmin: {0}, xmax: {1}, ymin: {2}, ymax: {2}".format(xmin, xmax, ymin, ymax)
+        return valid, error
 
 
     def shapely_check(self):
         valid = True
+        error = None
         for feature in self.shps:
             valid = shape(feature['geometry']).is_valid
             if not valid:
-                break
-        return valid
+                fix_valid = shape(feature['geometry']).buffer(0).is_valid
+                if fix_valid and error is None:
+                    error = "fixable"
+                elif not fix_valid:
+                    if error is not None:
+                        error = "partial"
+                    break
+        return valid, error
 
 
     def mongo_check(self, c_features):
         valid = True
+        error = None
         for feature in self.shps:
             geom = feature['geometry']
             try:
                 c_features.insert(geom)
-            except:
+            except Exception as e:
+                error = e
                 valid = False
                 break
-        return valid
+        return valid, error
 
 
