@@ -4,9 +4,12 @@ import sys
 import os
 import shutil
 import zipfile
+import json
 import errno
 import pymongo
+import fiona
 import pandas as pd
+from shapely.geometry import mapping, shape
 
 from boundary_check import BoundaryCheck
 
@@ -14,7 +17,7 @@ from boundary_check import BoundaryCheck
 # -------------------------------------
 # inputs
 
-stages = "2"
+stages = "3"
 
 version_input = (1, 3, 1)
 
@@ -88,7 +91,8 @@ data_dir = os.path.join(gb_dir, "data", data_version_str)
 # working directory
 work_dir = os.path.join(gb_dir, "tmp", data_version_str)
 extract_dir = os.path.join(work_dir, "extract")
-updates_dir = os.path.join(work_dir, "updates")
+# updates_dir = os.path.join(work_dir, "updates")
+final_dir = os.path.join(work_dir, "final")
 
 
 state_output_path = os.path.join(work_dir, 'status_output.csv')
@@ -109,6 +113,8 @@ if "1" in stages:
     for adm in adm_dirs:
         country_zips = os.listdir(os.path.join(processed_dir, adm))
         for file in country_zips:
+            if file.endswith(".DS_Store"):
+                pass
             path = os.path.join(processed_dir, adm, file)
             parts = file.split('_')
             iso = parts[0]
@@ -183,7 +189,7 @@ save_state()
 if "2" in stages:
     print "Running stage 2..."
 
-    make_dir(updates_dir)
+    # make_dir(updates_dir)
 
     # initialize mongo connection and create test collection
     client = pymongo.MongoClient(mongo_server, 27017)
@@ -270,41 +276,91 @@ save_state()
 # -------------------------------------
 # part 3 - process data
 
-# if "3" in stages:
+if "3" in stages:
 
-# organize output dir
-# create geojsons
-# add metadata
+    print "Running stage 3..."
 
 
+    make_dir(final_dir)
+    make_dir(data_dir)
 
 
-# import json
-# import fiona
-# from shapely.geometry import mapping, shape
+    # load metadata
+    full_metadata_src = pd.read_csv(metadata_path, quotechar='\"',
+                        na_values='', keep_default_na=False,
+                        encoding='utf-8')
+
+    state['metadata'] = None
+    state['metadata_error'] = None
+
+    def geojson_shape_mapping(features):
+        for feat in features:
+            feat['geometry'] = mapping(shape(feat['geometry']))
+            yield feat
 
 
-# def geojson_shape_mapping(features):
-#     for feat in features:
-#         feat['geometry'] = mapping(shape(feat['geometry']))
-#         yield feat
+    # could change this to use only rows without any errors across all stages
+    for ix, row in state.loc[state['valid_files'] == True].iterrows():
+        # create metadata JSON
+
+        print "{0} - {1} {2}".format(ix, row['iso'], row['adm'])
+
+        metadata_src = full_metadata_src.loc[full_metadata_src["Processed File Name"] == "{0}_{1}.zip".format(row["iso"], row["adm"])]
+
+        n_metadata = len(metadata_src)
+        if n_metadata > 1:
+            state.at[ix, 'metadata'] = False
+            state.at[ix, 'metadata_error'] = "Too many metadata matches ({0})".format(n_metadata)
+            break
+        elif n_metadata == 0:
+            state.at[ix, 'metadata'] = False
+            state.at[ix, 'metadata_error'] = "No metadata matches"
+            break
+
+
+        metadata = json.loads(metadata_src.to_json(orient="records"))[0]
+
+
+        metadata["adm"] = row["adm"]
+        metadata["iso"] = row["iso"]
+
+
+        state.at[ix, 'metadata'] = True
+
+
+        iso_adm = "{0}_{1}".format(row["iso"], row["adm"])
+        row_dir = os.path.join(final_dir, iso_adm)
+
+        make_dir(row_dir)
+        metadata_out_path = os.path.join(row_dir, "metadata.json")
+        print metadata_out_path
+        with open(metadata_out_path, "w") as f:
+            f.write(json.dumps(metadata, indent=4))
 
 
 
-# x = fiona.open("/sciclone/aiddata10/REU/geoboundaries/tmp/1_3_1/extract/AFG_ADM1/AFG_ADM1.shp")
-
-# features = list(geojson_shape_mapping(x))
-
-
-# geojson_out = {
-#     "type": "FeatureCollection",
-#     "features": features
-# }
-
-# with open(path, "w") as f:
-#     f.write(json.dumps(geojson_out))
+        # convert shapefile to GeoJSON
+        shapefile_path = state.at[ix, 'shapefile']
 
 
-# save_state()
+        shps = fiona.open(shapefile_path)
+
+        features = list(geojson_shape_mapping(shps))
+
+
+        geojson_out = {
+            "type": "FeatureCollection",
+            "features": features
+        }
+
+        geojson_out_path = os.path.join(row_dir, "{0}_{1}.geojson".format(row["iso"], row["adm"]))
+
+        with open(geojson_out_path, "w") as f:
+            f.write(json.dumps(geojson_out))
+
+        break
+
+
+save_state()
 
 
