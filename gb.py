@@ -348,6 +348,16 @@ if "3" in stages:
         features = list(geojson_shape_mapping(shps))
 
 
+        id_template = "{0}_{1}_{2}".format(row["iso"], row["adm"], data_version_str)
+        unique_id_field = "gbid"
+
+
+        for i in range(len(features)):
+            features[i]["properties"]["iso"] = row["iso"]
+            features[i]["properties"]["adm"] = row["adm"]
+            features[i]["properties"]["feature_id"] = str(i)
+            features[i]["properties"][unique_id_field] = "{0}_{1}".format(id_template, i)
+
         geojson_out = {
             "type": "FeatureCollection",
             "features": features
@@ -358,7 +368,7 @@ if "3" in stages:
         with open(geojson_out_path, "w") as f:
             f.write(json.dumps(geojson_out))
 
-        break
+
 
 
 save_state()
