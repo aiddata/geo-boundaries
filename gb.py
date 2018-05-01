@@ -300,7 +300,12 @@ if "3" in stages:
 
 
     # could change this to use only rows without any errors across all stages
+    # or anything else, as needed
+
     for ix, row in state.loc[state['valid_files'] == True].iterrows():
+    # for ix, row in state.loc[state['iso'].isin(["COD", "FSM"])].iterrows():
+
+
         # create metadata JSON
 
         print "{0} - {1} {2}".format(ix, row['iso'], row['adm'])
@@ -311,11 +316,11 @@ if "3" in stages:
         if n_metadata > 1:
             state.at[ix, 'metadata'] = False
             state.at[ix, 'metadata_error'] = "Too many metadata matches ({0})".format(n_metadata)
-            break
+            continue
         elif n_metadata == 0:
             state.at[ix, 'metadata'] = False
-            state.at[ix, 'metadata_error'] = "No metadata matches"
-            break
+            state.at[ix, 'metadata_error'] = "Missing metadata"
+            continue
 
 
         metadata = json.loads(metadata_src.to_json(orient="records"))[0]
@@ -347,6 +352,8 @@ if "3" in stages:
 
         features = list(geojson_shape_mapping(shps))
 
+        shps.close()
+
 
         id_template = "{0}_{1}_{2}".format(row["iso"], row["adm"], data_version_str)
         unique_id_field = "gbid"
@@ -367,7 +374,6 @@ if "3" in stages:
 
         with open(geojson_out_path, "w") as f:
             f.write(json.dumps(geojson_out))
-
 
 
 
