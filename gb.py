@@ -6,7 +6,9 @@ import shutil
 import zipfile
 import json
 import errno
-import pymongo
+import datetime
+import time
+
 import fiona
 import pandas as pd
 import geopandas as gpd
@@ -70,6 +72,7 @@ data_version_str = "1_3_1"
 #     sys.exit("Terminated: user's request.")
 
 
+use_mongo = True
 
 # mongo_server = 'localhost'
 mongo_server = '128.239.108.200'
@@ -192,15 +195,18 @@ if "2" in stages:
 
     # make_dir(updates_dir)
 
-    # initialize mongo connection and create test collection
-    client = pymongo.MongoClient(mongo_server, 27017)
-    test_db = client.geoboundaries_testing
+    if use_mongo:
+        import pymongo
 
-    if 'validation' in test_db.collection_names():
-        test_db.validation.drop()
+        # initialize mongo connection and create test collection
+        client = pymongo.MongoClient(mongo_server, 27017)
+        test_db = client.geoboundaries_testing
 
-    c_features = test_db.validation
-    c_features.create_index([('geometry', pymongo.GEOSPHERE)])
+        if 'validation' in test_db.collection_names():
+            test_db.validation.drop()
+
+        c_features = test_db.validation
+        c_features.create_index([('geometry', pymongo.GEOSPHERE)])
 
 
     state['valid_proj'] = None
@@ -247,14 +253,15 @@ if "2" in stages:
             state.at[ix, 'valid_shapely'] = False
             state.at[ix, 'error_shapely'] = e
 
-        try:
-            valid, error = bc.mongo_check(c_features)
-            state.at[ix, 'valid_mongo'] = valid
-            state.at[ix, 'error_mongo'] = error
-        except Exception as e:
-            print e
-            state.at[ix, 'valid_mongo'] = False
-            state.at[ix, 'error_mongo'] = e
+        if use_mongo:
+            try:
+                valid, error = bc.mongo_check(c_features)
+                state.at[ix, 'valid_mongo'] = valid
+                state.at[ix, 'error_mongo'] = error
+            except Exception as e:
+                print e
+                state.at[ix, 'valid_mongo'] = False
+                state.at[ix, 'error_mongo'] = e
 
         bc.close()
 
@@ -327,6 +334,10 @@ if "3" in stages:
 
         metadata["adm"] = row["adm"]
         metadata["iso"] = row["iso"]
+        metadata["version"] = data_version_str
+
+        metadata["timestamp"] = int(time.time())
+        metadata["datetime"] = datetime.datetime.fromtimestamp(metadata["timestamp"]).strftime('%Y-%m-%d %H:%M:%S')
 
 
         state.at[ix, 'metadata'] = True
