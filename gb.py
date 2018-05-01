@@ -9,6 +9,7 @@ import errno
 import pymongo
 import fiona
 import pandas as pd
+import geopandas as gpd
 from shapely.geometry import mapping, shape
 
 from boundary_check import BoundaryCheck
@@ -17,7 +18,7 @@ from boundary_check import BoundaryCheck
 # -------------------------------------
 # inputs
 
-stages = "3"
+stages = "4"
 
 version_input = (1, 3, 1)
 
@@ -282,8 +283,6 @@ if "3" in stages:
 
 
     make_dir(final_dir)
-    make_dir(data_dir)
-
 
     # load metadata
     full_metadata_src = pd.read_csv(metadata_path, quotechar='\"',
@@ -306,12 +305,12 @@ if "3" in stages:
     # for ix, row in state.loc[state['iso'].isin(["COD", "FSM"])].iterrows():
 
 
-        # create metadata JSON
-
         print "{0} - {1} {2}".format(ix, row['iso'], row['adm'])
 
+        # lookup metadata
         metadata_src = full_metadata_src.loc[full_metadata_src["Processed File Name"] == "{0}_{1}.zip".format(row["iso"], row["adm"])]
 
+        # make sure we have one metadata entry
         n_metadata = len(metadata_src)
         if n_metadata > 1:
             state.at[ix, 'metadata'] = False
@@ -322,7 +321,7 @@ if "3" in stages:
             state.at[ix, 'metadata_error'] = "Missing metadata"
             continue
 
-
+        # create metadata JSON
         metadata = json.loads(metadata_src.to_json(orient="records"))[0]
 
 
@@ -337,16 +336,16 @@ if "3" in stages:
         row_dir = os.path.join(final_dir, iso_adm)
 
         make_dir(row_dir)
+
         metadata_out_path = os.path.join(row_dir, "metadata.json")
-        print metadata_out_path
+
         with open(metadata_out_path, "w") as f:
             f.write(json.dumps(metadata, indent=4))
 
 
-
         # convert shapefile to GeoJSON
-        shapefile_path = state.at[ix, 'shapefile']
 
+        shapefile_path = state.at[ix, 'shapefile']
 
         shps = fiona.open(shapefile_path)
 
@@ -358,10 +357,10 @@ if "3" in stages:
         id_template = "{0}_{1}_{2}".format(row["iso"], row["adm"], data_version_str)
         unique_id_field = "gbid"
 
-
         for i in range(len(features)):
             features[i]["properties"]["iso"] = row["iso"]
             features[i]["properties"]["adm"] = row["adm"]
+            features[i]["properties"]["adm_int"] = int(row["adm"][3:])
             features[i]["properties"]["feature_id"] = str(i)
             features[i]["properties"][unique_id_field] = "{0}_{1}".format(id_template, i)
 
@@ -370,10 +369,85 @@ if "3" in stages:
             "features": features
         }
 
-        geojson_out_path = os.path.join(row_dir, "{0}_{1}.geojson".format(row["iso"], row["adm"]))
-
         with open(geojson_out_path, "w") as f:
             f.write(json.dumps(geojson_out))
+
+
+
+
+# load previous stage 1+2+3 data as reference
+# previous data must line up, any changes to underlying files will not
+# be detected or revalidated
+if "3" not in stages:
+    print "Loading stage 3..."
+
+    state = pd.read_csv(state_output_path, quotechar='\"',
+                        na_values='', keep_default_na=False,
+                        encoding='utf-8')
+
+
+
+save_state()
+
+
+# -------------------------------------
+# part 4 - finalize data
+
+if "4" in stages:
+
+    print "Running stage 4..."
+
+    make_dir(data_dir)
+
+
+    # state['complete'] = None
+
+    for ix, row in state.loc[state['metadata'] == True].iterrows():
+
+        print "{0} - {1} {2}".format(ix, row['iso'], row['adm'])
+
+        iso_adm = "{0}_{1}".format(row["iso"], row["adm"])
+        row_dir = os.path.join(final_dir, iso_adm)
+        geojson_out_path = os.path.join(row_dir, "{0}_{1}.geojson".format(row["iso"], row["adm"]))
+        metadata_out_path = os.path.join(row_dir, "metadata.json")
+
+        country_data_dir = os.path.join(data_dir, row["iso"])
+        country_shapefile_dir = os.path.join(country_data_dir, "shapefile")
+        country_geojson_dir = os.path.join(country_data_dir, "geojson")
+
+        make_dir(country_shapefile_dir)
+        make_dir(country_geojson_dir)
+
+        # create shapefile
+        shp_path = os.path.join(country_data_dir, "{0}_{1}.shp".format(row["iso"], row["adm"]))
+
+        gdf = gpd.read_file(geojson_out_path)
+        gdf.to_file(filename=shp_path)
+
+
+        # zip shapefile to country_data_dir
+        shp_files = [f for f in os.listdir(country_data_dir) if not os.path.isdir(os.path.join(country_data_dir, f))]
+
+        country_shp_zip = os.path.join(country_shapefile_dir, "{0}_{1}.zip".format(row["iso"], row["adm"]))
+
+        with zipfile.ZipFile(country_shp_zip, 'w') as myzip:
+            myzip.write(metadata_out_path, "metadata.json")
+            for f in shp_files:
+                myzip.write(os.path.join(country_data_dir, f), f)
+
+        # clean up files after they are zipped
+        for f in shp_files:
+            os.remove(os.path.join(country_data_dir, f))
+
+
+        # zip geojson to country_data_dir
+        country_geojson_zip = os.path.join(country_geojson_dir, "{0}_{1}.zip".format(row["iso"], row["adm"]))
+
+        with zipfile.ZipFile(country_geojson_zip, 'w') as myzip:
+            myzip.write(geojson_out_path, "{0}_{1}.geojson".format(row["iso"], row["adm"]))
+            myzip.write(metadata_out_path, "metadata.json")
+
+
 
 
 
