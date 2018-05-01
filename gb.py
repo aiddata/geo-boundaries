@@ -90,7 +90,8 @@ processed_dir = os.path.join(raw_dir, "processed")
 
 # output
 data_dir = os.path.join(gb_dir, "data", data_version_str)
-
+shapefile_dir = os.path.join(data_dir, "shapefile")
+geojson_dir = os.path.join(data_dir, "geojson")
 
 # working directory
 work_dir = os.path.join(gb_dir, "tmp", data_version_str)
@@ -414,8 +415,6 @@ if "4" in stages:
 
     print "Running stage 4..."
 
-    make_dir(data_dir)
-
     # state['complete'] = None
 
     for ix, row in state.loc[state['metadata'] == True].iterrows():
@@ -427,20 +426,25 @@ if "4" in stages:
         geojson_out_path = os.path.join(row_dir, "{0}_{1}.geojson".format(row["iso"], row["adm"]))
         metadata_out_path = os.path.join(row_dir, "metadata.json")
 
-        country_data_dir = os.path.join(data_dir, row["iso"])
-        country_shapefile_dir = os.path.join(country_data_dir, "shapefile")
-        country_geojson_dir = os.path.join(country_data_dir, "geojson")
+
+        country_shapefile_dir = os.path.join(shapefile_dir, row["iso"])
+        country_geojson_dir = os.path.join(geojson_dir, row["iso"])
 
         make_dir(country_shapefile_dir)
         make_dir(country_geojson_dir)
 
+
+        country_data_dir = os.path.join(row_dir, "shapefile")
+        make_dir(country_data_dir)
+
+
         if make_shapefile:
+
             # create shapefile
             shp_path = os.path.join(country_data_dir, "{0}_{1}.shp".format(row["iso"], row["adm"]))
 
             gdf = gpd.read_file(geojson_out_path)
             gdf.to_file(filename=shp_path)
-
 
             # zip shapefile to country_data_dir
             shp_files = [f for f in os.listdir(country_data_dir) if not os.path.isdir(os.path.join(country_data_dir, f))]
@@ -452,9 +456,6 @@ if "4" in stages:
                 for f in shp_files:
                     myzip.write(os.path.join(country_data_dir, f), f)
 
-            # clean up files after they are zipped
-            for f in shp_files:
-                os.remove(os.path.join(country_data_dir, f))
 
         if make_geojson:
             # zip geojson to country_data_dir
@@ -471,3 +472,14 @@ if "4" in stages:
 save_state()
 
 
+# -------------------------------------
+# part 5 - cleanup tmp data
+
+
+if "5" in stages:
+
+    print "Running stage 5..."
+
+    # # clean up files after they are zipped
+    # for f in shp_files:
+    #     os.remove(os.path.join(country_data_dir, f))
