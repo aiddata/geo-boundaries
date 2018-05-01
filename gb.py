@@ -404,12 +404,17 @@ save_state()
 # -------------------------------------
 # part 4 - finalize data
 
+# can add other formats here if needed in future.
+# can specify only some format to build if needed.
+make_shapefile = True
+make_geojson = True
+
+
 if "4" in stages:
 
     print "Running stage 4..."
 
     make_dir(data_dir)
-
 
     # state['complete'] = None
 
@@ -429,34 +434,35 @@ if "4" in stages:
         make_dir(country_shapefile_dir)
         make_dir(country_geojson_dir)
 
-        # create shapefile
-        shp_path = os.path.join(country_data_dir, "{0}_{1}.shp".format(row["iso"], row["adm"]))
+        if make_shapefile:
+            # create shapefile
+            shp_path = os.path.join(country_data_dir, "{0}_{1}.shp".format(row["iso"], row["adm"]))
 
-        gdf = gpd.read_file(geojson_out_path)
-        gdf.to_file(filename=shp_path)
+            gdf = gpd.read_file(geojson_out_path)
+            gdf.to_file(filename=shp_path)
 
 
-        # zip shapefile to country_data_dir
-        shp_files = [f for f in os.listdir(country_data_dir) if not os.path.isdir(os.path.join(country_data_dir, f))]
+            # zip shapefile to country_data_dir
+            shp_files = [f for f in os.listdir(country_data_dir) if not os.path.isdir(os.path.join(country_data_dir, f))]
 
-        country_shp_zip = os.path.join(country_shapefile_dir, "{0}_{1}.zip".format(row["iso"], row["adm"]))
+            country_shp_zip = os.path.join(country_shapefile_dir, "{0}_{1}.zip".format(row["iso"], row["adm"]))
 
-        with zipfile.ZipFile(country_shp_zip, 'w') as myzip:
-            myzip.write(metadata_out_path, "metadata.json")
+            with zipfile.ZipFile(country_shp_zip, 'w') as myzip:
+                myzip.write(metadata_out_path, "metadata.json")
+                for f in shp_files:
+                    myzip.write(os.path.join(country_data_dir, f), f)
+
+            # clean up files after they are zipped
             for f in shp_files:
-                myzip.write(os.path.join(country_data_dir, f), f)
+                os.remove(os.path.join(country_data_dir, f))
 
-        # clean up files after they are zipped
-        for f in shp_files:
-            os.remove(os.path.join(country_data_dir, f))
+        if make_geojson:
+            # zip geojson to country_data_dir
+            country_geojson_zip = os.path.join(country_geojson_dir, "{0}_{1}.zip".format(row["iso"], row["adm"]))
 
-
-        # zip geojson to country_data_dir
-        country_geojson_zip = os.path.join(country_geojson_dir, "{0}_{1}.zip".format(row["iso"], row["adm"]))
-
-        with zipfile.ZipFile(country_geojson_zip, 'w') as myzip:
-            myzip.write(geojson_out_path, "{0}_{1}.geojson".format(row["iso"], row["adm"]))
-            myzip.write(metadata_out_path, "metadata.json")
+            with zipfile.ZipFile(country_geojson_zip, 'w') as myzip:
+                myzip.write(geojson_out_path, "{0}_{1}.geojson".format(row["iso"], row["adm"]))
+                myzip.write(metadata_out_path, "metadata.json")
 
 
 
