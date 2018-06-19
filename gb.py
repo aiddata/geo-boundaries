@@ -1,4 +1,9 @@
+'''
 
+
+
+
+'''
 
 import sys
 import os
@@ -17,10 +22,31 @@ from shapely.geometry import mapping, shape
 from boundary_check import BoundaryCheck
 
 
+parallel = True
+
+if parallel:
+
+    from mpi4py import MPI
+
+    comm = MPI.COMM_WORLD
+    size = comm.Get_size()
+    rank = comm.Get_rank()
+
+    if rank == 0:
+        print "Running in parallel mode..."
+
+else:
+
+    print "Running in serial mode..."
+
+    size = 1
+    rank = 0
+
+
 # -------------------------------------
 # inputs
 
-stages = "4"
+stages = "5"
 
 version_input = (1, 3, 1)
 
@@ -50,7 +76,18 @@ def user_prompt_bool(question):
 
 
 def save_state():
-    state.to_csv(state_output_path, index=False, encoding='utf-8')
+    if parallel: comm.Barrier()
+
+    if rank == 0:
+        state.to_csv(state_output_path, index=False, encoding='utf-8')
+
+    if parallel: comm.Barrier()
+
+
+def geojson_shape_mapping(features):
+    for feat in features:
+        feat['geometry'] = mapping(shape(feat['geometry']))
+        yield feat
 
 
 # prep version
@@ -92,6 +129,7 @@ processed_dir = os.path.join(raw_dir, "processed")
 data_dir = os.path.join(gb_dir, "data", data_version_str)
 shapefile_dir = os.path.join(data_dir, "shapefile")
 geojson_dir = os.path.join(data_dir, "geojson")
+geojson_simple_dir = os.path.join(data_dir, "geojson_simple")
 
 # working directory
 work_dir = os.path.join(gb_dir, "tmp", data_version_str)
@@ -103,11 +141,12 @@ final_dir = os.path.join(work_dir, "final")
 state_output_path = os.path.join(work_dir, 'status_output.csv')
 
 
+
 # -------------------------------------
 # part 1 - initialize and extract data
 
 if "1" in stages:
-    print "Running stage 1..."
+    if rank == 0: print "Running stage 1..."
 
     # --------------------
     # prepare pandas table to track all actions and errors
@@ -167,11 +206,13 @@ if "1" in stages:
 
 
 
-# load previous stage 1 data as reference
+
+# load previous stages data as reference
 # previous data must line up, any changes to underlying files will not
 # be detected or revalidated
 if "1" not in stages:
-    print "Loading stage 1..."
+    if rank == 0:
+        print "Loading stage 1..."
 
     state = pd.read_csv(state_output_path, quotechar='\"',
                         na_values='', keep_default_na=False,
@@ -192,7 +233,7 @@ save_state()
 #   the connected server supports BSON document sizes up to 16793598 bytes.
 
 if "2" in stages:
-    print "Running stage 2..."
+    if rank == 0: print "Running stage 2..."
 
     # make_dir(updates_dir)
 
@@ -268,11 +309,11 @@ if "2" in stages:
 
 
 
-# load previous stage 1+2 data as reference
+# load previous stages data as reference
 # previous data must line up, any changes to underlying files will not
 # be detected or revalidated
 if "2" not in stages:
-    print "Loading stage 2..."
+    if rank == 0: print "Loading stage 2..."
 
     state = pd.read_csv(state_output_path, quotechar='\"',
                         na_values='', keep_default_na=False,
@@ -287,7 +328,7 @@ save_state()
 
 if "3" in stages:
 
-    print "Running stage 3..."
+    if rank == 0: print "Running stage 3..."
 
 
     make_dir(final_dir)
@@ -299,11 +340,6 @@ if "3" in stages:
 
     state['metadata'] = None
     state['metadata_error'] = None
-
-    def geojson_shape_mapping(features):
-        for feat in features:
-            feat['geometry'] = mapping(shape(feat['geometry']))
-            yield feat
 
 
     # could change this to use only rows without any errors across all stages
@@ -381,22 +417,23 @@ if "3" in stages:
             "features": features
         }
 
+        geojson_out_path = os.path.join(row_dir, "{0}_{1}.geojson".format(row["iso"], row["adm"]))
+
         with open(geojson_out_path, "w") as f:
             f.write(json.dumps(geojson_out))
 
 
 
 
-# load previous stage 1+2+3 data as reference
+# load previous stages data as reference
 # previous data must line up, any changes to underlying files will not
 # be detected or revalidated
 if "3" not in stages:
-    print "Loading stage 3..."
+    if rank == 0: print "Loading stage 3..."
 
     state = pd.read_csv(state_output_path, quotechar='\"',
                         na_values='', keep_default_na=False,
                         encoding='utf-8')
-
 
 
 save_state()
@@ -413,9 +450,7 @@ make_geojson = True
 
 if "4" in stages:
 
-    print "Running stage 4..."
-
-    # state['complete'] = None
+    if rank == 0: print "Running stage 4..."
 
     for ix, row in state.loc[state['metadata'] == True].iterrows():
 
@@ -469,16 +504,123 @@ if "4" in stages:
 
 
 
+# load previous stages data as reference
+# previous data must line up, any changes to underlying files will not
+# be detected or revalidated
+if "4" not in stages:
+    if rank == 0: print "Loading stage 4..."
+
+    state = pd.read_csv(state_output_path, quotechar='\"',
+                        na_values='', keep_default_na=False,
+                        encoding='utf-8')
+
+
 save_state()
 
 
 # -------------------------------------
-# part 5 - cleanup tmp data
+# part 5 - create simplified versions of data
 
+make_geojson_simple = True
 
 if "5" in stages:
 
-    print "Running stage 5..."
+    if rank == 0: print "Running stage 5..."
+    simplify_tolerance = 0.01
+
+
+    if parallel:
+
+        qlist = list(state.loc[state['metadata'] == True].index)
+
+        c = rank
+
+        while c < len(qlist):
+
+            ix = qlist[c]
+            row = state.iloc[ix]
+
+            print "{0} - {1} {2}".format(ix, row['iso'], row['adm'])
+
+            iso_adm = "{0}_{1}".format(row["iso"], row["adm"])
+            row_dir = os.path.join(final_dir, iso_adm)
+            geojson_out_path = os.path.join(row_dir, "{0}_{1}.geojson".format(row["iso"], row["adm"]))
+            metadata_out_path = os.path.join(row_dir, "metadata.json")
+
+
+            if make_geojson_simple:
+
+                geojson_simple_out_path = os.path.join(row_dir, "{0}_{1}_simple.geojson".format(row["iso"], row["adm"]))
+
+                gdf = gpd.read_file(geojson_out_path)
+
+                # SIMPLIFY
+                gdf['geometry'] = gdf['geometry'].simplify(simplify_tolerance)
+
+                with open(geojson_simple_out_path, "w", 0) as f:
+                    json.dump(json.loads(gdf.to_json()), f)
+
+
+                country_geojson_simple_dir = os.path.join(geojson_simple_dir, row["iso"])
+
+                make_dir(country_geojson_simple_dir)
+
+                # zip geojson to country_data_dir
+                country_geojson_simple_zip = os.path.join(country_geojson_simple_dir, "{0}_{1}_simple.zip".format(row["iso"], row["adm"]))
+
+                with zipfile.ZipFile(country_geojson_simple_zip, 'w') as myzip:
+                    myzip.write(geojson_simple_out_path, "{0}_{1}_simple.geojson".format(row["iso"], row["adm"]))
+                    myzip.write(metadata_out_path, "metadata.json")
+
+
+            c += size
+
+    else:
+
+        for ix, row in state.loc[state['metadata'] == True].iterrows():
+
+            print "{0} - {1} {2}".format(ix, row['iso'], row['adm'])
+
+            iso_adm = "{0}_{1}".format(row["iso"], row["adm"])
+            row_dir = os.path.join(final_dir, iso_adm)
+            geojson_out_path = os.path.join(row_dir, "{0}_{1}.geojson".format(row["iso"], row["adm"]))
+            metadata_out_path = os.path.join(row_dir, "metadata.json")
+
+
+            if make_geojson_simple:
+
+                geojson_simple_out_path = os.path.join(row_dir, "{0}_{1}_simple.geojson".format(row["iso"], row["adm"]))
+
+                gdf = gpd.read_file(geojson_out_path)
+
+                # SIMPLIFY
+                gdf['geometry'] = gdf['geometry'].simplify(simplify_tolerance)
+
+                with open(geojson_simple_out_path, "w", 0) as f:
+                    json.dump(json.loads(gdf.to_json()), f)
+
+
+                country_geojson_simple_dir = os.path.join(geojson_simple_dir, row["iso"])
+
+                make_dir(country_geojson_simple_dir)
+
+                # zip geojson to country_data_dir
+                country_geojson_simple_zip = os.path.join(country_geojson_simple_dir, "{0}_{1}_simple.zip".format(row["iso"], row["adm"]))
+
+                with zipfile.ZipFile(country_geojson_simple_zip, 'w') as myzip:
+                    myzip.write(geojson_simple_out_path, "{0}_{1}_simple.geojson".format(row["iso"], row["adm"]))
+                    myzip.write(metadata_out_path, "metadata.json")
+
+
+
+
+# -------------------------------------
+# part 6 - cleanup tmp data
+
+
+if "6" in stages:
+
+    if rank == 0: print "Running stage 6..."
 
     # # clean up files after they are zipped
     # for f in shp_files:
