@@ -49,7 +49,7 @@ class BoundaryCheck:
         xmin, ymin, xmax, ymax = self.shps.bounds
         valid = (xmin >= -180) and (xmax <= 180) and (ymin >= -90) and (ymax <= 90)
         if not valid:
-            error = "xmin: {0}, xmax: {1}, ymin: {2}, ymax: {2}".format(xmin, xmax, ymin, ymax)
+            error = "xmin: {0}, xmax: {1}, ymin: {2}, ymax: {3}".format(xmin, xmax, ymin, ymax)
         return valid, error
 
 
