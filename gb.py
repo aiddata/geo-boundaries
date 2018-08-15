@@ -2,7 +2,6 @@
 
 
 
-
 '''
 
 import sys
@@ -20,6 +19,8 @@ import geopandas as gpd
 from shapely.geometry import mapping, shape
 
 from boundary_check import BoundaryCheck
+
+import mpi_utility
 
 
 parallel = True
@@ -45,10 +46,11 @@ else:
 
 # -------------------------------------
 # inputs
+# static for now - could be script args later
 
-stages = "5"
+stages = "12"
 
-version_input = (1, 3, 1)
+version_input = (1, 3, 2)
 
 
 # -------------------------------------
@@ -92,7 +94,7 @@ def geojson_shape_mapping(features):
 
 # prep version
 raw_version_str = "1_3"
-data_version_str = "1_3_1"
+data_version_str = "1_3_2"
 
 # '.'.join(map(str, list(version_input)))
 
@@ -140,7 +142,7 @@ final_dir = os.path.join(work_dir, "final")
 
 state_output_path = os.path.join(work_dir, 'status_output.csv')
 
-
+state = None
 
 # -------------------------------------
 # part 1 - initialize and extract data
@@ -158,7 +160,7 @@ if "1" in stages:
         country_zips = os.listdir(os.path.join(processed_dir, adm))
         for file in country_zips:
             if file.endswith(".DS_Store"):
-                pass
+                continue
             path = os.path.join(processed_dir, adm, file)
             parts = file.split('_')
             iso = parts[0]
@@ -169,57 +171,107 @@ if "1" in stages:
     state = pd.DataFrame(init_dicts)
 
 
-    # --------------------
-    # extract
+    def s1_general_init(self):
+        pass
 
-    make_dir(extract_dir)
-    state['valid_extract'] = None
+    def s1_master_init(self):
+        # start job timer
+        self.Ts = int(time.time())
+        self.T_start = time.localtime()
+        print 'Start: ' + time.strftime('%Y-%m-%d  %H:%M:%S', self.T_start)
 
-    # unzip all data from processed_dir to working dir
-    for ix, row in state.loc[state['valid_init'] == True].iterrows():
+        self.state['valid_extract'] = None
+        self.state['valid_files'] = None
+        self.state['shapefile'] = None
+
+
+    def s1_worker_job(self, task_index, task_data):
+
+        ix, row = task_data
+
         iso_adm = "{0}_{1}".format(row["iso"], row["adm"])
         row_dir = os.path.join(extract_dir, iso_adm)
+
+
         try:
             make_dir(row_dir)
+
+            # extract files
             zip_ref = zipfile.ZipFile(row["path"], 'r')
             zip_ref.extractall(row_dir)
             zip_ref.close()
-            state.at[ix, 'valid_extract'] = True
-        except:
-            state.at[ix, 'valid_extract'] = False
+            valid_extract = True
 
-    # --------------------
-    # check extracted files
+            # make sure all shapefiles exist
+            row_files = [os.path.join(row_dir, "{0}.{1}".format(iso_adm, ext))
+                         for ext in self.shapefile_extenions]
+            valid_files = all([os.path.isfile(f) for f in row_files])
 
-    state['valid_files'] = None
+            # primary shapefile path
+            valid_shapefile_path = os.path.join(row_dir, "{0}.shp".format(iso_adm))
 
-    shapefile_extenions = ["shp", "shx", "dbf"]
+        except Exception as e:
+            print e
+            valid_extract = False
+            valid_files = None
+            valid_shapefile_path = None
 
-    # unzip all data from processed_dir to working dir
-    for ix, row in state.loc[state['valid_extract'] == True].iterrows():
-        iso_adm = "{0}_{1}".format(row["iso"], row["adm"])
-        row_dir = os.path.join(extract_dir, iso_adm)
-        row_files = [os.path.join(row_dir, "{0}.{1}".format(iso_adm, ext))
-                     for ext in shapefile_extenions]
-        state.at[ix, 'valid_files'] = all([os.path.isfile(f) for f in row_files])
-        state.at[ix, 'shapefile'] = os.path.join(row_dir, "{0}.shp".format(iso_adm))
+        return (ix, valid_extract, valid_files, valid_shapefile_path)
 
 
+    def s1_master_process(self, worker_result):
+        ix, valid_extract, valid_files, valid_shapefile_path = worker_result
+        self.state.at[ix, 'valid_extract'] = valid_extract
+        self.state.at[ix, 'valid_files'] = valid_files
+        self.state.at[ix, 'shapefile'] = valid_shapefile_path
 
 
-# load previous stages data as reference
-# previous data must line up, any changes to underlying files will not
-# be detected or revalidated
-if "1" not in stages:
+    def s1_master_final(self):
+        # stop job timer
+        T_run = int(time.time() - self.Ts)
+        T_end = time.localtime()
+        print '\n\n'
+        print 'Start: ' + time.strftime('%Y-%m-%d  %H:%M:%S', self.T_start)
+        print 'End: '+ time.strftime('%Y-%m-%d  %H:%M:%S', T_end)
+        print 'Runtime: ' + str(T_run//60) +'m '+ str(int(T_run%60)) +'s'
+        print '\n\n'
+
+
+    s1_job = mpi_utility.NewParallel(parallel=parallel)
+
+    s1_job.state = state.copy(deep=True)
+    s1_job.shapefile_extenions = ["shp", "shx", "dbf"]
+
+    s1_qlist = list(state.loc[state['valid_init'] == True].iterrows())
+
+    s1_job.set_task_list(s1_qlist)
+    s1_job.set_general_init(s1_general_init)
+    s1_job.set_master_init(s1_master_init)
+    s1_job.set_worker_job(s1_worker_job)
+    s1_job.set_master_process(s1_master_process)
+    s1_job.set_master_final(s1_master_final)
+
+    s1_job.run()
+
     if rank == 0:
-        print "Loading stage 1..."
-
-    state = pd.read_csv(state_output_path, quotechar='\"',
-                        na_values='', keep_default_na=False,
-                        encoding='utf-8')
+        state = s1_job.state.copy(deep=True)
 
 
 save_state()
+
+# load previous stages data
+# - used all the time to load master state on workers, as well as when
+#   previous state is not being run
+# - previous data must line up, any changes to underlying files will not
+#   be detected or revalidated
+if "1" not in stages and rank == 0:
+        print "Loading stage 1..."
+
+state = pd.read_csv(state_output_path, quotechar='\"',
+                    na_values='', keep_default_na=False,
+                    encoding='utf-8')
+
+
 
 
 # -------------------------------------
@@ -237,6 +289,7 @@ if "2" in stages:
 
     # make_dir(updates_dir)
 
+    c_features = None
     if use_mongo:
         import pymongo
 
@@ -244,94 +297,142 @@ if "2" in stages:
         client = pymongo.MongoClient(mongo_server, 27017)
         test_db = client.geoboundaries_testing
 
-        if 'validation' in test_db.collection_names():
+
+        if rank == 0 and 'validation' in test_db.collection_names():
             test_db.validation.drop()
+            c_features = test_db.validation
+            c_features.create_index([('geometry', pymongo.GEOSPHERE)])
 
         c_features = test_db.validation
-        c_features.create_index([('geometry', pymongo.GEOSPHERE)])
 
 
-    state['valid_proj'] = None
-    state['valid_bnds'] = None
-    state['valid_shapely'] = None
-    state['valid_mongo'] = None
+    def s2_general_init(self):
+        pass
 
-    state['error_proj'] = None
-    state['error_bnds'] = None
-    state['error_shapely'] = None
-    state['error_mongo'] = None
 
-    # boundary validation checks
-    for ix, row in state.loc[state['valid_files'] == True].iterrows():
+    def s2_master_init(self):
+        # start job timer
+        self.Ts = int(time.time())
+        self.T_start = time.localtime()
+        print 'Start: ' + time.strftime('%Y-%m-%d  %H:%M:%S', self.T_start)
 
-        print "{0} - {1} {2}".format(ix, row['iso'], row['adm'])
+        self.state['valid_proj'] = None
+        self.state['valid_bnds'] = None
+        self.state['valid_shapely'] = None
+        self.state['valid_mongo'] = None
+
+        self.state['error_proj'] = None
+        self.state['error_bnds'] = None
+        self.state['error_shapely'] = None
+        self.state['error_mongo'] = None
+
+
+    def s2_worker_job(self, task_index, task_data):
+
+        ix, row = task_data
 
         bc = BoundaryCheck(row['shapefile'])
 
         try:
-            valid, error  = bc.projection_check()
-            state.at[ix, 'valid_proj'] = valid
-            state.at[ix, 'error_proj'] = error
+            valid_proj, error_proj = bc.projection_check()
         except Exception as e:
-            print e
-            state.at[ix, 'valid_proj'] = False
-            state.at[ix, 'error_proj'] = e
+            valid_proj, error_proj = False, e
 
         try:
-            valid, error  = bc.boundary_check()
-            state.at[ix, 'valid_bnds'] = valid
-            state.at[ix, 'error_bnds'] = error
+            valid_bnds, error_bnds = bc.boundary_check()
         except Exception as e:
-            print e
-            state.at[ix, 'valid_bnds'] = False
-            state.at[ix, 'error_bnds'] = e
+            valid_bnds, error_bnds = False, e
 
         try:
-            valid, error  = bc.shapely_check()
-            state.at[ix, 'valid_shapely'] = valid
-            state.at[ix, 'error_shapely'] = error
+            valid_shapely, error_shapely = bc.shapely_check()
         except Exception as e:
-            print e
-            state.at[ix, 'valid_shapely'] = False
-            state.at[ix, 'error_shapely'] = e
+            valid_shapely, error_shapely = False, e
 
-        if use_mongo:
+        valid_mongo, error_mongo = None, None
+        if self.use_mongo:
             try:
-                valid, error = bc.mongo_check(c_features)
-                state.at[ix, 'valid_mongo'] = valid
-                state.at[ix, 'error_mongo'] = error
+                valid_mongo, error_mongo = bc.mongo_check(self.c_features)
             except Exception as e:
-                print e
-                state.at[ix, 'valid_mongo'] = False
-                state.at[ix, 'error_mongo'] = e
+                valid_mongo, error_mongo = False, e
 
         bc.close()
 
+        return (ix, valid_proj, error_proj, valid_bnds, error_bnds, valid_shapely, error_shapely, valid_mongo, error_mongo)
 
 
-# load previous stages data as reference
-# previous data must line up, any changes to underlying files will not
-# be detected or revalidated
-if "2" not in stages:
-    if rank == 0: print "Loading stage 2..."
+    def s2_master_process(self, worker_result):
+        ix, valid_proj, error_proj, valid_bnds, error_bnds, valid_shapely, error_shapely, valid_mongo, error_mongo = worker_result
 
-    state = pd.read_csv(state_output_path, quotechar='\"',
-                        na_values='', keep_default_na=False,
-                        encoding='utf-8')
+        self.state.at[ix, 'valid_proj'] = valid_proj
+        self.state.at[ix, 'error_proj'] = error_proj
+
+        self.state.at[ix, 'valid_bnds'] = valid_bnds
+        self.state.at[ix, 'error_bnds'] = error_bnds
+
+        self.state.at[ix, 'valid_shapely'] = valid_shapely
+        self.state.at[ix, 'error_shapely'] = error_shapely
+
+        self.state.at[ix, 'valid_mongo'] = valid_mongo
+        self.state.at[ix, 'error_mongo'] = error_mongo
+
+
+    def s2_master_final(self):
+        # stop job timer
+        T_run = int(time.time() - self.Ts)
+        T_end = time.localtime()
+        print '\n\n'
+        print 'Start: ' + time.strftime('%Y-%m-%d  %H:%M:%S', self.T_start)
+        print 'End: '+ time.strftime('%Y-%m-%d  %H:%M:%S', T_end)
+        print 'Runtime: ' + str(T_run//60) +'m '+ str(int(T_run%60)) +'s'
+        print '\n\n'
+
+
+    s2_job = mpi_utility.NewParallel(parallel=parallel)
+
+    s2_job.state = state.copy(deep=True)
+    s2_job.use_mongo = use_mongo
+    s2_job.c_features = c_features
+
+    s2_qlist = list(state.loc[state['valid_files'] == True].iterrows())
+
+    s2_job.set_task_list(s2_qlist)
+    s2_job.set_general_init(s2_general_init)
+    s2_job.set_master_init(s2_master_init)
+    s2_job.set_worker_job(s2_worker_job)
+    s2_job.set_master_process(s2_master_process)
+    s2_job.set_master_final(s2_master_final)
+
+    s2_job.run()
+
+    if rank == 0:
+        state = s2_job.state.copy(deep=True)
+
+
 
 
 save_state()
 
+# load previous stages data
+# - used all the time to load master state on workers, as well as when
+#   previous state is not being run
+# - previous data must line up, any changes to underlying files will not
+#   be detected or revalidated
+if "2" not in stages and rank == 0:
+        print "Loading stage 2..."
+
+state = pd.read_csv(state_output_path, quotechar='\"',
+                    na_values='', keep_default_na=False,
+                    encoding='utf-8')
+
+
 
 # -------------------------------------
-# part 3 - process data
+# part 3 - process metadata
 
 if "3" in stages:
 
     if rank == 0: print "Running stage 3..."
 
-
-    make_dir(final_dir)
 
     # load metadata
     full_metadata_src = pd.read_csv(metadata_path, quotechar='\"',
@@ -377,9 +478,6 @@ if "3" in stages:
         metadata["datetime"] = datetime.datetime.fromtimestamp(metadata["timestamp"]).strftime('%Y-%m-%d %H:%M:%S')
 
 
-        state.at[ix, 'metadata'] = True
-
-
         iso_adm = "{0}_{1}".format(row["iso"], row["adm"])
         row_dir = os.path.join(final_dir, iso_adm)
 
@@ -390,8 +488,60 @@ if "3" in stages:
         with open(metadata_out_path, "w") as f:
             f.write(json.dumps(metadata, indent=4))
 
+        state.at[ix, 'metadata'] = True
 
-        # convert shapefile to GeoJSON
+
+
+save_state()
+
+# load previous stages data as reference
+# previous data must line up, any changes to underlying files will not
+# be detected or revalidated
+if "3" not in stages:
+    if rank == 0: print "Loading stage 3..."
+
+    state = pd.read_csv(state_output_path, quotechar='\"',
+                        na_values='', keep_default_na=False,
+                        encoding='utf-8')
+
+
+
+
+# -------------------------------------
+# part 4 - finalize data
+
+# can add other formats here if needed in future.
+# can specify only some format to build if needed.
+make_shapefile = True
+make_geojson = True
+
+make_geojson_simple = True
+simplify_tolerance = 0.01
+
+if "4" in stages:
+
+    if rank == 0: print "Running stage 4..."
+
+
+    qlist = list(state.loc[state['metadata'] == True].index)
+
+    c = rank
+
+    while c < len(qlist):
+
+        ix = qlist[c]
+        row = state.iloc[ix]
+
+        print "{0} - {1} {2}".format(ix, row['iso'], row['adm'])
+
+        iso_adm = "{0}_{1}".format(row["iso"], row["adm"])
+        row_dir = os.path.join(final_dir, iso_adm)
+        geojson_out_path = os.path.join(row_dir, "{0}_{1}.geojson".format(row["iso"], row["adm"]))
+        metadata_out_path = os.path.join(row_dir, "metadata.json")
+
+
+        # --------------------
+        # convert shapefile to GeoJSON first
 
         shapefile_path = state.at[ix, 'shapefile']
 
@@ -422,44 +572,7 @@ if "3" in stages:
         with open(geojson_out_path, "w") as f:
             f.write(json.dumps(geojson_out))
 
-
-
-
-# load previous stages data as reference
-# previous data must line up, any changes to underlying files will not
-# be detected or revalidated
-if "3" not in stages:
-    if rank == 0: print "Loading stage 3..."
-
-    state = pd.read_csv(state_output_path, quotechar='\"',
-                        na_values='', keep_default_na=False,
-                        encoding='utf-8')
-
-
-save_state()
-
-
-# -------------------------------------
-# part 4 - finalize data
-
-# can add other formats here if needed in future.
-# can specify only some format to build if needed.
-make_shapefile = True
-make_geojson = True
-
-
-if "4" in stages:
-
-    if rank == 0: print "Running stage 4..."
-
-    for ix, row in state.loc[state['metadata'] == True].iterrows():
-
-        print "{0} - {1} {2}".format(ix, row['iso'], row['adm'])
-
-        iso_adm = "{0}_{1}".format(row["iso"], row["adm"])
-        row_dir = os.path.join(final_dir, iso_adm)
-        geojson_out_path = os.path.join(row_dir, "{0}_{1}.geojson".format(row["iso"], row["adm"]))
-        metadata_out_path = os.path.join(row_dir, "metadata.json")
+        # --------------------
 
 
         country_shapefile_dir = os.path.join(shapefile_dir, row["iso"])
@@ -501,8 +614,33 @@ if "4" in stages:
                 myzip.write(metadata_out_path, "metadata.json")
 
 
+        if make_geojson_simple:
+
+            geojson_simple_out_path = os.path.join(row_dir, "{0}_{1}_simple.geojson".format(row["iso"], row["adm"]))
+
+            gdf = gpd.read_file(geojson_out_path)
+
+            # SIMPLIFY
+            gdf['geometry'] = gdf['geometry'].simplify(simplify_tolerance)
+
+            with open(geojson_simple_out_path, "w", 0) as f:
+                json.dump(json.loads(gdf.to_json()), f)
 
 
+            country_geojson_simple_dir = os.path.join(geojson_simple_dir, row["iso"])
+
+            make_dir(country_geojson_simple_dir)
+
+            # zip geojson to country_data_dir
+            country_geojson_simple_zip = os.path.join(country_geojson_simple_dir, "{0}_{1}_simple.zip".format(row["iso"], row["adm"]))
+
+            with zipfile.ZipFile(country_geojson_simple_zip, 'w') as myzip:
+                myzip.write(geojson_simple_out_path, "{0}_{1}_simple.geojson".format(row["iso"], row["adm"]))
+                myzip.write(metadata_out_path, "metadata.json")
+
+
+
+save_state()
 
 # load previous stages data as reference
 # previous data must line up, any changes to underlying files will not
@@ -515,112 +653,15 @@ if "4" not in stages:
                         encoding='utf-8')
 
 
-save_state()
 
 
 # -------------------------------------
-# part 5 - create simplified versions of data
-
-make_geojson_simple = True
-
-if "5" in stages:
-
-    if rank == 0: print "Running stage 5..."
-    simplify_tolerance = 0.01
+# part 5 - cleanup tmp data
 
 
-    if parallel:
+# if "5" in stages:
 
-        qlist = list(state.loc[state['metadata'] == True].index)
-
-        c = rank
-
-        while c < len(qlist):
-
-            ix = qlist[c]
-            row = state.iloc[ix]
-
-            print "{0} - {1} {2}".format(ix, row['iso'], row['adm'])
-
-            iso_adm = "{0}_{1}".format(row["iso"], row["adm"])
-            row_dir = os.path.join(final_dir, iso_adm)
-            geojson_out_path = os.path.join(row_dir, "{0}_{1}.geojson".format(row["iso"], row["adm"]))
-            metadata_out_path = os.path.join(row_dir, "metadata.json")
-
-
-            if make_geojson_simple:
-
-                geojson_simple_out_path = os.path.join(row_dir, "{0}_{1}_simple.geojson".format(row["iso"], row["adm"]))
-
-                gdf = gpd.read_file(geojson_out_path)
-
-                # SIMPLIFY
-                gdf['geometry'] = gdf['geometry'].simplify(simplify_tolerance)
-
-                with open(geojson_simple_out_path, "w", 0) as f:
-                    json.dump(json.loads(gdf.to_json()), f)
-
-
-                country_geojson_simple_dir = os.path.join(geojson_simple_dir, row["iso"])
-
-                make_dir(country_geojson_simple_dir)
-
-                # zip geojson to country_data_dir
-                country_geojson_simple_zip = os.path.join(country_geojson_simple_dir, "{0}_{1}_simple.zip".format(row["iso"], row["adm"]))
-
-                with zipfile.ZipFile(country_geojson_simple_zip, 'w') as myzip:
-                    myzip.write(geojson_simple_out_path, "{0}_{1}_simple.geojson".format(row["iso"], row["adm"]))
-                    myzip.write(metadata_out_path, "metadata.json")
-
-
-            c += size
-
-    else:
-
-        for ix, row in state.loc[state['metadata'] == True].iterrows():
-
-            print "{0} - {1} {2}".format(ix, row['iso'], row['adm'])
-
-            iso_adm = "{0}_{1}".format(row["iso"], row["adm"])
-            row_dir = os.path.join(final_dir, iso_adm)
-            geojson_out_path = os.path.join(row_dir, "{0}_{1}.geojson".format(row["iso"], row["adm"]))
-            metadata_out_path = os.path.join(row_dir, "metadata.json")
-
-
-            if make_geojson_simple:
-
-                geojson_simple_out_path = os.path.join(row_dir, "{0}_{1}_simple.geojson".format(row["iso"], row["adm"]))
-
-                gdf = gpd.read_file(geojson_out_path)
-
-                # SIMPLIFY
-                gdf['geometry'] = gdf['geometry'].simplify(simplify_tolerance)
-
-                with open(geojson_simple_out_path, "w", 0) as f:
-                    json.dump(json.loads(gdf.to_json()), f)
-
-
-                country_geojson_simple_dir = os.path.join(geojson_simple_dir, row["iso"])
-
-                make_dir(country_geojson_simple_dir)
-
-                # zip geojson to country_data_dir
-                country_geojson_simple_zip = os.path.join(country_geojson_simple_dir, "{0}_{1}_simple.zip".format(row["iso"], row["adm"]))
-
-                with zipfile.ZipFile(country_geojson_simple_zip, 'w') as myzip:
-                    myzip.write(geojson_simple_out_path, "{0}_{1}_simple.geojson".format(row["iso"], row["adm"]))
-                    myzip.write(metadata_out_path, "metadata.json")
-
-
-
-
-# -------------------------------------
-# part 6 - cleanup tmp data
-
-
-if "6" in stages:
-
-    if rank == 0: print "Running stage 6..."
+    # if rank == 0: print "Running stage 5..."
 
     # # clean up files after they are zipped
     # for f in shp_files:
