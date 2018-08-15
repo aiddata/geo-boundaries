@@ -1,6 +1,13 @@
 '''
 
 
+at each stage:
+# load previous stages data
+# - used all the time to load master state on workers, as well as when
+#   previous state is not being run
+# - previous data must line up, any changes to underlying files will not
+#   be detected or revalidated
+
 
 '''
 
@@ -12,6 +19,7 @@ import json
 import errno
 import datetime
 import time
+from copy import deepcopy
 
 import fiona
 import pandas as pd
@@ -34,7 +42,7 @@ if parallel:
     rank = comm.Get_rank()
 
     if rank == 0:
-        print "Running in parallel mode..."
+        print "Running in parallel mode ({} cores)...".format(size)
 
 else:
 
@@ -48,7 +56,7 @@ else:
 # inputs
 # static for now - could be script args later
 
-stages = "12"
+stages = "4"
 
 version_input = (1, 3, 2)
 
@@ -147,8 +155,10 @@ state = None
 # -------------------------------------
 # part 1 - initialize and extract data
 
+
 if "1" in stages:
-    if rank == 0: print "Running stage 1..."
+    if rank == 0:
+        print "Running stage 1..."
 
     # --------------------
     # prepare pandas table to track all actions and errors
@@ -256,22 +266,16 @@ if "1" in stages:
     if rank == 0:
         state = s1_job.state.copy(deep=True)
 
+    save_state()
 
-save_state()
 
-# load previous stages data
-# - used all the time to load master state on workers, as well as when
-#   previous state is not being run
-# - previous data must line up, any changes to underlying files will not
-#   be detected or revalidated
-if "1" not in stages and rank == 0:
-        print "Loading stage 1..."
 
 state = pd.read_csv(state_output_path, quotechar='\"',
                     na_values='', keep_default_na=False,
                     encoding='utf-8')
 
 
+if parallel: comm.Barrier()
 
 
 # -------------------------------------
@@ -285,7 +289,10 @@ state = pd.read_csv(state_output_path, quotechar='\"',
 #   the connected server supports BSON document sizes up to 16793598 bytes.
 
 if "2" in stages:
-    if rank == 0: print "Running stage 2..."
+
+    if rank == 0:
+        print "Running stage 2..."
+
 
     # make_dir(updates_dir)
 
@@ -407,31 +414,26 @@ if "2" in stages:
     if rank == 0:
         state = s2_job.state.copy(deep=True)
 
+    save_state()
 
 
-
-save_state()
-
-# load previous stages data
-# - used all the time to load master state on workers, as well as when
-#   previous state is not being run
-# - previous data must line up, any changes to underlying files will not
-#   be detected or revalidated
-if "2" not in stages and rank == 0:
-        print "Loading stage 2..."
 
 state = pd.read_csv(state_output_path, quotechar='\"',
-                    na_values='', keep_default_na=False,
-                    encoding='utf-8')
+                na_values='', keep_default_na=False,
+                encoding='utf-8')
+
+if parallel: comm.Barrier()
 
 
 
 # -------------------------------------
 # part 3 - process metadata
 
+
 if "3" in stages:
 
-    if rank == 0: print "Running stage 3..."
+    if rank == 0:
+        print "Running stage 3..."
 
 
     # load metadata
@@ -491,19 +493,15 @@ if "3" in stages:
         state.at[ix, 'metadata'] = True
 
 
+    save_state()
 
-save_state()
 
-# load previous stages data as reference
-# previous data must line up, any changes to underlying files will not
-# be detected or revalidated
-if "3" not in stages:
-    if rank == 0: print "Loading stage 3..."
 
-    state = pd.read_csv(state_output_path, quotechar='\"',
-                        na_values='', keep_default_na=False,
-                        encoding='utf-8')
+state = pd.read_csv(state_output_path, quotechar='\"',
+                    na_values='', keep_default_na=False,
+                    encoding='utf-8')
 
+if parallel: comm.Barrier()
 
 
 
@@ -520,17 +518,22 @@ simplify_tolerance = 0.01
 
 if "4" in stages:
 
-    if rank == 0: print "Running stage 4..."
+    if rank == 0:
+        print "Running stage 4..."
 
 
     qlist = list(state.loc[state['metadata'] == True].index)
 
-    c = rank
+    c = deepcopy(rank)
+
+    print rank
 
     while c < len(qlist):
 
         ix = qlist[c]
         row = state.iloc[ix]
+
+        c += size
 
         print "{0} - {1} {2}".format(ix, row['iso'], row['adm'])
 
@@ -640,19 +643,16 @@ if "4" in stages:
 
 
 
-save_state()
-
-# load previous stages data as reference
-# previous data must line up, any changes to underlying files will not
-# be detected or revalidated
-if "4" not in stages:
-    if rank == 0: print "Loading stage 4..."
-
-    state = pd.read_csv(state_output_path, quotechar='\"',
-                        na_values='', keep_default_na=False,
-                        encoding='utf-8')
+    save_state()
 
 
+
+state = pd.read_csv(state_output_path, quotechar='\"',
+                    na_values='', keep_default_na=False,
+                    encoding='utf-8')
+
+
+if parallel: comm.Barrier()
 
 
 # -------------------------------------
@@ -661,7 +661,8 @@ if "4" not in stages:
 
 # if "5" in stages:
 
-    # if rank == 0: print "Running stage 5..."
+    # if rank == 0:
+        # print "Running stage 5..."
 
     # # clean up files after they are zipped
     # for f in shp_files:
