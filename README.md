@@ -16,8 +16,8 @@ Drive occurs. For example, if GeoQuery is using GeoBoundaries version 1.3.0, and
 then the next time GeoBoundaries data is updated without updating GeoQuery the version of GeoBoundaries
 will be bumped to 2.1.0
 
-The minor version is to indicate processing changes that occur when the underlying data does not change.
-These would typically be associated with bug fixes or other minor format changes. For example, if the formatting
+The patch version is to indicate processing changes that occur when the underlying data does not change.
+These would typically be associated with bug fixes or other small format changes. For example, if the formatting
 of a text field in the metadata was changed, version 2.1.0 would be bumped to version 2.1.1
 
 Note: GeoBoundaries does not make assurances of backwards compatibility with earlier versions based on

@@ -55,9 +55,9 @@ else:
 # inputs
 # static for now - could be script args later
 
-stages = "4"
+stages = "1234"
 
-version_input = (1, 3, 2)
+version_input = (1, 3, 3)
 
 
 # -------------------------------------
@@ -101,7 +101,7 @@ def geojson_shape_mapping(features):
 
 # prep version
 raw_version_str = "1_3"
-data_version_str = "1_3_2"
+data_version_str = "1_3_3"
 
 # '.'.join(map(str, list(version_input)))
 
@@ -136,6 +136,7 @@ processed_dir = os.path.join(raw_dir, "processed")
 
 # output
 data_dir = os.path.join(gb_dir, "data", data_version_str)
+make_dir(data_dir)
 
 state_output_path = os.path.join(data_dir, 'status_output.csv')
 
