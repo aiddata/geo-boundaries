@@ -30,7 +30,6 @@ backwards compatibility will be clearly indicated.
 -------------------
 Structure
 
-raw
 
 The `raw` directory contains versions of GeoBoundaries in their initial form, downloaded from Google Drive, without modification.
 Each subdirectory is identified by only major and minor version numbers since each time a new download occurs the minor version is bumped.
@@ -44,17 +43,16 @@ Subdirectories include:
 - the `metadata` csv pulled from the "Processed Data" tab of the geoquery > geoboundaries > geoboundaries_resources > GeoBoundaries Dataset Tracking and Processing sheet on Google Drive
 
 
+The `tmp` directory contains temporary files produced by the GeoBoundaries builder, including the shapesfiles unzipped from the `raw` directory, and `metadata` jsons for each county/adm combination. This is versioned based on the full version of GeoBoundaries (e.g., `1_3_1`)
 
-data
 
-The `data` directory contains the fully versioned final outputs. These are produced by processing a corresponding version of data from the `raw` directory
+The `data` directory contains the fully versioned final outputs, in their final uncompressed form as well as compressed form (zip). These are produced by processing a corresponding version of data from the `raw` directory
 
-Example subdirectory: `1.3.1` would indicate that the `raw > 1_3` data was used with modifications to the processing initially used on version 1.3.0
+Example subdirectory: `1_3_1` would indicate that the `raw/1_3` data was used with modifications to the processing initially used on version 1.3.0
 
-Subdirectories include additional subdirectories for each data format:
+Subdirectories for both `final` (uncompressed) and `zip` (compressed) data include subdirectory structures for multiple file formats (geojson, shapefile, etc.) based on the options used to run the builder.
 
-- geojson
-- shp
+An example path is `zip/geojson/AFG/AFG_ADM1.zip`
 
 
 -------------------
