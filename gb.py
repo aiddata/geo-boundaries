@@ -495,7 +495,9 @@ if "3" in stages:
         metadata_out_path = os.path.join(metadata_dir, "{}.json".format(iso_adm))
 
         with open(metadata_out_path, "w") as f:
-            f.write(json.dumps(metadata, indent=4))
+            json.dump(metadata, f, indent=4)
+            f.write("\n")
+
 
         state.at[ix, 'metadata'] = True
 
@@ -613,7 +615,8 @@ if "4" in stages:
         }
 
         with open(final_geojson_path, "w") as f:
-            f.write(json.dumps(geojson_out))
+            json.dump(geojson_out, f)
+            f.write("\n")
 
 
         # --------------------
@@ -647,6 +650,7 @@ if "4" in stages:
 
             with open(final_geojson_simple_path, "w", 0) as f:
                 json.dump(json.loads(gdf.to_json()), f)
+                f.write("\n")
 
             with zipfile.ZipFile(zip_geojson_simple_path, 'w') as myzip:
                 myzip.write(final_geojson_simple_path, "{}_simple.geojson".format(iso_adm))
