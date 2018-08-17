@@ -64,9 +64,14 @@ if rank == 0:
 # inputs
 # static for now - could be script args later
 
-stages = "6"
+stages = "346"
 
 version_input = (1, 3, 3)
+
+field_lookup = {
+    "raw_file_name": "Processed File Name",
+    "country": "Group"
+}
 
 
 # -------------------------------------
@@ -439,12 +444,11 @@ if parallel: comm.Barrier()
 # -------------------------------------
 # stage 3 - process metadata
 
+from unidecode import unidecode
 
-if "3" in stages:
+if "3" in stages and rank == 0:
 
-    if rank == 0:
-        print "Running stage 3..."
-
+    print "Running stage 3..."
 
     # load metadata
     full_metadata_src = pd.read_csv(metadata_path, quotechar='\"',
@@ -465,7 +469,7 @@ if "3" in stages:
         print "{0} - {1} {2}".format(ix, row['iso'], row['adm'])
 
         # lookup metadata
-        metadata_src = full_metadata_src.loc[full_metadata_src["Processed File Name"] == "{0}_{1}.zip".format(row["iso"], row["adm"])]
+        metadata_src = full_metadata_src.loc[full_metadata_src[field_lookup["raw_file_name"]] == "{0}_{1}.zip".format(row["iso"], row["adm"])]
 
         # make sure we have one metadata entry
         n_metadata = len(metadata_src)
@@ -482,6 +486,7 @@ if "3" in stages:
         metadata = json.loads(metadata_src.to_json(orient="records"))[0]
 
 
+        metadata["country"] = metadata[field_lookup["country"]]
         metadata["adm"] = row["adm"]
         metadata["iso"] = row["iso"]
         metadata["version"] = data_version_str
@@ -498,12 +503,11 @@ if "3" in stages:
             json.dump(metadata, f, indent=4)
             f.write("\n")
 
-
         state.at[ix, 'metadata'] = True
 
 
+if "3" in stages:
     save_state()
-
 
 
 state = pd.read_csv(state_output_path, quotechar='\"',
@@ -674,14 +678,15 @@ if parallel: comm.Barrier()
 # stage 5 - cleanup tmp data
 
 
-if "5" in stages:
+if "5" in stages and rank == 0:
 
-    if rank == 0:
-        print "Running stage 5..."
+    print "Running stage 5..."
 
     # clean up tmp files
     os.rmtree(work_dir)
 
+
+if parallel: comm.Barrier()
 
 
 # -------------------------------------
@@ -692,7 +697,6 @@ if "6" in stages:
 
     if rank == 0:
         print "Running stage 6..."
-
 
     geoquery_dir = "/sciclone/aiddata10/REU/geo/data/boundaries/geoboundaries/{}".format(data_version_str)
 
@@ -705,9 +709,13 @@ if "6" in stages:
         ix = qlist[c]
         row = state.iloc[ix]
 
+        c += size
+
         print "{0} - {1} {2}".format(ix, row['iso'], row['adm'])
 
         iso_adm = "{0}_{1}".format(row["iso"], row["adm"])
+
+        metadata_out_path = os.path.join(metadata_dir, "{}.json".format(iso_adm))
 
         final_geojson_path = os.path.join(final_dir, "geojson", row["iso"],
                                           "{}.geojson".format(iso_adm))
@@ -715,9 +723,11 @@ if "6" in stages:
         row_dir = os.path.join(geoquery_dir, iso_adm)
         make_dir(row_dir)
 
+        geoquery_metadata_path = os.path.join(row_dir, "metadata.json")
         geoquery_geojson_path = os.path.join(row_dir, os.path.basename(final_geojson_path))
 
         shutil.copy(final_geojson_path, geoquery_geojson_path)
+        shutil.copy(metadata_out_path, geoquery_metadata_path)
 
 
 
