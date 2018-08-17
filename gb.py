@@ -51,6 +51,14 @@ else:
     rank = 0
 
 
+
+if rank == 0:
+    builder_time = int(time.time())
+    builder_start = time.localtime()
+    print 'Start: ' + time.strftime('%Y-%m-%d  %H:%M:%S', builder_start)
+
+
+
 # -------------------------------------
 # inputs
 # static for now - could be script args later
@@ -670,3 +678,14 @@ if parallel: comm.Barrier()
     # # clean up files after they are zipped
     # for f in shp_files:
     #     os.remove(os.path.join(country_data_dir, f))
+
+
+# -------------------------------------
+
+if rank == 0:
+    builder_run = int(time.time() - builder_time)
+    print '\n\n'
+    print 'Start: ' + time.strftime('%Y-%m-%d  %H:%M:%S', builder_start)
+    print 'End: '+ time.strftime('%Y-%m-%d  %H:%M:%S', time.localtime())
+    print 'Runtime: ' + str(builder_run//60) +'m '+ str(int(builder_run%60)) +'s'
+    print '\n\n'
