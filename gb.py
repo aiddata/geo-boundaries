@@ -64,7 +64,7 @@ if rank == 0:
 # inputs
 # static for now - could be script args later
 
-stages = "3"
+stages = "6"
 
 version_input = (1, 3, 3)
 
@@ -166,7 +166,7 @@ state = None
 
 
 # -------------------------------------
-# part 1 - initialize and extract data
+# stage 1 - initialize and extract data
 
 
 if "1" in stages:
@@ -292,7 +292,7 @@ if parallel: comm.Barrier()
 
 
 # -------------------------------------
-# part 2 - check data
+# stage 2 - check data
 
 # we need to think about how to use mongo check.
 # it will throw topology errors as well as errors
@@ -437,7 +437,7 @@ if parallel: comm.Barrier()
 
 
 # -------------------------------------
-# part 3 - process metadata
+# stage 3 - process metadata
 
 
 if "3" in stages:
@@ -515,7 +515,7 @@ if parallel: comm.Barrier()
 
 
 # -------------------------------------
-# part 4 - output data
+# stage 4 - output data
 
 # can add other formats here if needed in future.
 # can specify only some format to build if needed.
@@ -671,7 +671,7 @@ if parallel: comm.Barrier()
 
 
 # -------------------------------------
-# part 5 - cleanup tmp data
+# stage 5 - cleanup tmp data
 
 
 if "5" in stages:
@@ -681,6 +681,49 @@ if "5" in stages:
 
     # clean up tmp files
      os.rmtree(work_dir)
+
+
+
+# -------------------------------------
+# stage 6 - move to geoquery dir
+
+
+if "6" in stages:
+
+    if rank == 0:
+        print "Running stage 6..."
+
+
+    qlist = list(state.loc[state['metadata'] == True].index)
+
+    geoquery_dir = "/sciclone/aiddata10/geo/data/boundaries/geoboundaries/{}".format(data_version_str)
+
+    for ix in qlist:
+
+        row = state.iloc[ix]
+
+        print "{0} - {1} {2}".format(ix, row['iso'], row['adm'])
+
+        iso_adm = "{0}_{1}".format(row["iso"], row["adm"])
+
+        metadata_out_path = os.path.join(metadata_dir, "{}.json".format(iso_adm))
+
+        final_geojson_path = os.path.join(final_dir, "geojson", row["iso"],
+                                          "{}.geojson".format(iso_adm))
+
+        final_geojson_simple_path = os.path.join(final_dir, "geojson_simple", row["iso"],
+                                                 "{}_simple.geojson".format(iso_adm))
+
+        row_dir = os.path.join(geoquery_dir, iso_adm)
+        make_dir(row_dir)
+
+        geoquery_geojson_path = os.path.join(row_dir, os.path.basename(final_geojson_path))
+        geoquery_simple_geojson_path = os.path.join(row_dir, os.path.basename(final_simple_geojson_path))
+
+        shutil.copy(final_geojson_path, geoquery_geojson_path)
+
+
+
 
 
 # -------------------------------------
