@@ -13,6 +13,7 @@ at each stage:
 
 import sys
 import os
+import shutil
 import zipfile
 import json
 import errno
@@ -63,7 +64,7 @@ if rank == 0:
 # inputs
 # static for now - could be script args later
 
-stages = "1234"
+stages = "3"
 
 version_input = (1, 3, 3)
 
@@ -144,7 +145,14 @@ processed_dir = os.path.join(raw_dir, "processed")
 
 # output
 data_dir = os.path.join(gb_dir, "data", data_version_str)
-make_dir(data_dir)
+
+final_dir = os.path.join(data_dir, "final")
+
+metadata_dir = os.path.join(final_dir, "metadata")
+make_dir(metadata_dir)
+
+zip_dir = os.path.join(data_dir, "zip")
+
 
 state_output_path = os.path.join(data_dir, 'status_output.csv')
 
@@ -152,9 +160,6 @@ state_output_path = os.path.join(data_dir, 'status_output.csv')
 # working directory
 work_dir = os.path.join(gb_dir, "tmp", data_version_str)
 extract_dir = os.path.join(work_dir, "extract")
-metadata_dir = os.path.join(work_dir, "metadata")
-
-make_dir(metadata_dir)
 
 
 state = None
@@ -508,7 +513,7 @@ if parallel: comm.Barrier()
 
 
 # -------------------------------------
-# part 4 - finalize data
+# part 4 - output data
 
 # can add other formats here if needed in future.
 # can specify only some format to build if needed.
@@ -540,11 +545,6 @@ if "4" in stages:
         iso_adm = "{0}_{1}".format(row["iso"], row["adm"])
 
         metadata_out_path = os.path.join(metadata_dir, "{}.json".format(iso_adm))
-
-
-        final_dir = os.path.join(data_dir, "final")
-        zip_dir = os.path.join(data_dir, "zip")
-
 
         final_geojson_path = os.path.join(final_dir, "geojson", row["iso"],
                                           "{}.geojson".format(iso_adm))
@@ -670,14 +670,13 @@ if parallel: comm.Barrier()
 # part 5 - cleanup tmp data
 
 
-# if "5" in stages:
+if "5" in stages:
 
-    # if rank == 0:
-        # print "Running stage 5..."
+    if rank == 0:
+        print "Running stage 5..."
 
-    # # clean up files after they are zipped
-    # for f in shp_files:
-    #     os.remove(os.path.join(country_data_dir, f))
+    # clean up tmp files
+     os.rmtree(work_dir)
 
 
 # -------------------------------------
