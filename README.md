@@ -7,16 +7,16 @@ GeoBoundaries Readme
 Versioning
 
 GeoBoundaries is versioned using a modified version of the major.minor.patch notation.
-The major version number is bumped based on when a new ingest of GeoBoundaries into GeoQuery occurs.
+The **major** version number is bumped based on when a new ingest of GeoBoundaries into GeoQuery occurs.
 For example, if the current version of GeoBoundaries is 1.3.0 and this version is ingested into GeoQuery,
 the next version will be 2.0.0
 
-Minor versions indicate that the raw data may have changes and is bumped any time a new download from Google
+**Minor** versions indicate that the raw data may have changes and is bumped any time a new download from Google
 Drive occurs. For example, if GeoQuery is using GeoBoundaries version 1.3.0, and the current GeoBoundaries is 2.0.0,
 then the next time GeoBoundaries data is updated without updating GeoQuery the version of GeoBoundaries
 will be bumped to 2.1.0
 
-The patch version is to indicate processing changes that occur when the underlying data does not change.
+The **patch** version is to indicate processing changes that occur when the underlying data does not change.
 These would typically be associated with bug fixes or other small format changes. For example, if the formatting
 of a text field in the metadata was changed, version 2.1.0 would be bumped to version 2.1.1
 
