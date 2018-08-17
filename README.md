@@ -31,6 +31,8 @@ backwards compatibility will be clearly indicated.
 Structure
 
 
+__Raw__
+
 The `raw` directory contains versions of GeoBoundaries in their initial form, downloaded from Google Drive, without modification.
 Each subdirectory is identified by only major and minor version numbers since each time a new download occurs the minor version is bumped.
 
@@ -44,9 +46,12 @@ Subdirectories include:
 
 
 
+__Tmp__
+
 The `tmp` directory contains temporary files produced by the GeoBoundaries builder, including the shapesfiles unzipped from the `raw` directory, and `metadata` jsons for each county/adm combination. This is versioned based on the full version of GeoBoundaries (e.g., `1_3_1`)
 
 
+__Data__
 
 The `data` directory contains the fully versioned final outputs, in their final uncompressed form as well as compressed form (zip). These are produced by processing a corresponding version of data from the `raw` directory
 
