@@ -45,15 +45,14 @@ Subdirectories include:
 - the `metadata` csv pulled from the "Processed Data" tab of the geoquery > geoboundaries > geoboundaries_resources > GeoBoundaries Dataset Tracking and Processing sheet on Google Drive
 
 
-
 __Tmp__
 
-The `tmp` directory contains temporary files produced by the GeoBoundaries builder, including the shapesfiles unzipped from the `raw` directory, and `metadata` jsons for each county/adm combination. This is versioned based on the full version of GeoBoundaries (e.g., `1_3_1`)
+The `tmp` directory contains temporary files produced by the GeoBoundaries builder
 
 
 __Data__
 
-The `data` directory contains the fully versioned final outputs, in their final uncompressed form as well as compressed form (zip). These are produced by processing a corresponding version of data from the `raw` directory
+The `data` directory contains the fully versioned final outputs, in their final uncompressed form as well as compressed form (zip). These are produced by processing a corresponding version of data from the `raw` directory. Metadata is contained within each zip file as well as separately in the `final/metadata` dir.
 
 Example subdirectory: `1_3_1` would indicate that the `raw/1_3` data was used with modifications to the processing initially used on version 1.3.0
 
