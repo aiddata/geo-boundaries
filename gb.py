@@ -680,7 +680,7 @@ if "5" in stages:
         print "Running stage 5..."
 
     # clean up tmp files
-     os.rmtree(work_dir)
+    os.rmtree(work_dir)
 
 
 
@@ -694,31 +694,28 @@ if "6" in stages:
         print "Running stage 6..."
 
 
-    qlist = list(state.loc[state['metadata'] == True].index)
-
     geoquery_dir = "/sciclone/aiddata10/geo/data/boundaries/geoboundaries/{}".format(data_version_str)
 
-    for ix in qlist:
+    qlist = list(state.loc[state['metadata'] == True].index)
 
+    c = deepcopy(rank)
+
+    while c < len(qlist):
+
+        ix = qlist[c]
         row = state.iloc[ix]
 
         print "{0} - {1} {2}".format(ix, row['iso'], row['adm'])
 
         iso_adm = "{0}_{1}".format(row["iso"], row["adm"])
 
-        metadata_out_path = os.path.join(metadata_dir, "{}.json".format(iso_adm))
-
         final_geojson_path = os.path.join(final_dir, "geojson", row["iso"],
                                           "{}.geojson".format(iso_adm))
-
-        final_geojson_simple_path = os.path.join(final_dir, "geojson_simple", row["iso"],
-                                                 "{}_simple.geojson".format(iso_adm))
 
         row_dir = os.path.join(geoquery_dir, iso_adm)
         make_dir(row_dir)
 
         geoquery_geojson_path = os.path.join(row_dir, os.path.basename(final_geojson_path))
-        geoquery_simple_geojson_path = os.path.join(row_dir, os.path.basename(final_simple_geojson_path))
 
         shutil.copy(final_geojson_path, geoquery_geojson_path)
 
