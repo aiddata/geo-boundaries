@@ -694,7 +694,7 @@ if "6" in stages:
         print "Running stage 6..."
 
 
-    geoquery_dir = "/sciclone/aiddata10/geo/data/boundaries/geoboundaries/{}".format(data_version_str)
+    geoquery_dir = "/sciclone/aiddata10/REU/geo/data/boundaries/geoboundaries/{}".format(data_version_str)
 
     qlist = list(state.loc[state['metadata'] == True].index)
 
