@@ -555,13 +555,13 @@ if "4" in stages:
 
 
 
-        zip_geojson_path = os.path.join(data_dir, "geojson", row["iso"],
+        zip_geojson_path = os.path.join(zip_dir, "geojson", row["iso"],
                                         "{}.geojson.zip".format(iso_adm))
 
-        zip_shapefile_path = os.path.join(data_dir, "shapefile", row["iso"],
+        zip_shapefile_path = os.path.join(zip_dir, "shapefile", row["iso"],
                                           "{}.shp.zip".format(iso_adm))
 
-        zip_geojson_simple_path = os.path.join(data_dir, "geojson_simple", row["iso"],
+        zip_geojson_simple_path = os.path.join(zip_dir, "geojson_simple", row["iso"],
                                                "{}_simple.geojson.zip".format(iso_adm))
 
 
