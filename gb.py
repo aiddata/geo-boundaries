@@ -64,7 +64,7 @@ if rank == 0:
 # inputs
 # static for now - could be script args later
 
-stages = "346"
+stages = ""
 
 version_input = (1, 3, 3)
 
