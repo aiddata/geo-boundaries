@@ -64,9 +64,9 @@ if rank == 0:
 # inputs
 # static for now - could be script args later
 
-stages = ""
+stages = "2"
 
-version_input = (1, 3, 3)
+version_input = (1, 4, 0)
 
 field_lookup = {
     "raw_file_name": "Processed File Name",
@@ -114,8 +114,8 @@ def geojson_shape_mapping(features):
 
 
 # prep version
-raw_version_str = "1_3"
-data_version_str = "1_3_3"
+raw_version_str = "1_4"
+data_version_str = "1_4_0"
 
 # '.'.join(map(str, list(version_input)))
 
