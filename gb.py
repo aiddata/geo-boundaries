@@ -682,7 +682,7 @@ if "5" in stages and rank == 0:
     print "Running stage 5..."
 
     # clean up tmp files
-    os.rmtree(work_dir)
+    shutil.rmtree(work_dir)
 
 
 if parallel: comm.Barrier()
