@@ -64,9 +64,9 @@ if rank == 0:
 # inputs
 # static for now - could be script args later
 
-stages = "2"
+stages = "1234"
 
-version_input = (1, 4, 0)
+version_input = (1, 5, 0)
 
 field_lookup = {
     "raw_file_name": "Processed File Name",
@@ -114,8 +114,8 @@ def geojson_shape_mapping(features):
 
 
 # prep version
-raw_version_str = "1_4"
-data_version_str = "1_4_0"
+raw_version_str = "1_5"
+data_version_str = "1_5_0"
 
 # '.'.join(map(str, list(version_input)))
 
@@ -165,6 +165,7 @@ state_output_path = os.path.join(data_dir, 'status_output.csv')
 # working directory
 work_dir = os.path.join(gb_dir, "tmp", data_version_str)
 extract_dir = os.path.join(work_dir, "extract")
+# fixed_dir = os.path.join(work_dir, "fixed")
 
 
 state = None
@@ -371,13 +372,11 @@ if "2" in stages:
             valid_shapely, error_shapely = False, e
 
         valid_mongo, error_mongo = None, None
-        if self.use_mongo:
-            try:
-                valid_mongo, error_mongo = bc.mongo_check(self.c_features)
-            except Exception as e:
-                valid_mongo, error_mongo = False, e
-
-        bc.close()
+        # if self.use_mongo:
+        #     try:
+        #         valid_mongo, error_mongo = bc.mongo_check(self.c_features)
+        #     except Exception as e:
+        #         valid_mongo, error_mongo = False, e
 
         return (ix, valid_proj, error_proj, valid_bnds, error_bnds, valid_shapely, error_shapely, valid_mongo, error_mongo)
 

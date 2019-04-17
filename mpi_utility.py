@@ -374,7 +374,7 @@ class NewParallel():
 
     def run_serial(self):
         """Run job using set functions in serial."""
-        if rank == 0:
+        if self.rank == 0:
             self.general_init()
             self.master_init()
 
@@ -560,5 +560,3 @@ class NewParallel():
                     # confirm error message received and exit
                     self.comm.send(None, dest=0, tag=self.tags.EXIT)
                     break
-
-

@@ -1,20 +1,33 @@
 
+import os
+import errno
 import re
+import shutil
+from copy import deepcopy
 import fiona
-from shapely.geometry import shape
+from shapely.geometry import mapping, shape
 from osgeo import ogr, osr
-
 
 
 class BoundaryCheck:
 
     def __init__(self, path):
         self.path = path
-        self.shps = fiona.open(self.path)
+        src = fiona.open(self.path)
+        self.src_driver = src.driver
+        self.src_crs = src.crs
+        self.src_schema = src.schema
+        # self.shps = deepcopy(src)
+        self.shps = src
 
 
-    def close(self):
-        self.shps.close()
+    def make_dir(self, path):
+        try:
+            os.makedirs(path)
+        except OSError as exception:
+            if exception.errno != errno.EEXIST:
+                raise
+
 
     def projection_check(self):
         error = None
@@ -55,19 +68,40 @@ class BoundaryCheck:
         return valid, error
 
 
+    def _save_shapely_fixes(self, shapes):
+        fix_path = self.path.replace("extract", "fixed")
+        fix_dir = os.path.dirname(fix_path)
+        self.make_dir(fix_dir)
+        with fiona.open(fix_path, 'w', driver=self.src_driver, crs=self.src_crs, schema=self.src_schema) as c:
+            c.writerecords(shapes)
+        shutil.make_archive(fix_dir, "zip", fix_dir)
+        shutil.rmtree(fix_dir)
+
+
     def shapely_check(self):
         valid = True
         error = None
+        fixed = []
         for feature in self.shps:
-            valid = shape(feature['geometry']).is_valid
+            raw_shape = shape(feature['geometry'])
+            valid = raw_shape.is_valid
+            if valid:
+                fixed.append(feature)
             if not valid:
-                fix_valid = shape(feature['geometry']).buffer(0).is_valid
+                fixed_shape = raw_shape.buffer(0)
+                fix_valid = fixed_shape.is_valid
                 if fix_valid and error is None:
                     error = "fixable"
+                    feature["geometry"] = mapping(fixed_shape)
+                    fixed.append(feature)
                 elif not fix_valid:
                     if error is not None:
                         error = "partial"
+                    else:
+                        error = "failed"
                     break
+        if error == "fixable":
+            self._save_shapely_fixes(fixed)
         return valid, error
 
 
