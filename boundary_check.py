@@ -46,8 +46,10 @@ class BoundaryCheck:
 
     def boundary_check(self):
         error = None
+        # tolerance
+        tol = 1e-12
         xmin, ymin, xmax, ymax = self.shps.bounds
-        valid = (xmin >= -180) and (xmax <= 180) and (ymin >= -90) and (ymax <= 90)
+        valid = (xmin >= -180-tol) and (xmax <= 180+tol) and (ymin >= -90-tol) and (ymax <= 90+tol)
         if not valid:
             error = "xmin: {0}, xmax: {1}, ymin: {2}, ymax: {3}".format(xmin, xmax, ymin, ymax)
         return valid, error
@@ -81,5 +83,3 @@ class BoundaryCheck:
                 valid = False
                 break
         return valid, error
-
-
