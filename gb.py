@@ -13,6 +13,7 @@ at each stage:
 
 import sys
 import os
+import glob
 import shutil
 import zipfile
 import json
@@ -64,7 +65,7 @@ if rank == 0:
 # inputs
 # static for now - could be script args later
 
-stages = "1234"
+stages = "4"
 
 version_input = (1, 5, 0)
 
@@ -143,7 +144,8 @@ gb_dir = "/sciclone/aiddata10/REU/geoboundaries"
 # input
 raw_dir = os.path.join(gb_dir, "raw", raw_version_str)
 
-metadata_path = os.path.join(raw_dir, "metadata.csv")
+# metadata_path = os.path.join(raw_dir, "metadata.csv")
+metadata_path = glob.glob(os.path.join(raw_dir, "Metadata/*.xlsx"))[0]
 
 processed_dir = os.path.join(raw_dir, "processed")
 
@@ -450,9 +452,12 @@ if "3" in stages and rank == 0:
     print "Running stage 3..."
 
     # load metadata
-    full_metadata_src = pd.read_csv(metadata_path, quotechar='\"',
-                                    na_values='', keep_default_na=False,
-                                    encoding='utf-8')
+    # full_metadata_src = pd.read_csv(metadata_path, quotechar='\"',
+    #                                 na_values='', keep_default_na=False,
+    #                                 encoding='utf-8')
+    full_metadata_src = pd.read_excel(metadata_path, quotechar='\"',
+                                      na_values='', keep_default_na=False,
+                                      encoding='utf-8')
 
     state['metadata'] = None
     state['metadata_error'] = None
@@ -534,7 +539,7 @@ if "4" in stages:
         print "Running stage 4..."
 
 
-    qlist = list(state.loc[state['metadata'] == True].index)
+    qlist = list(state.loc[(state['metadata'] == True) & ((state['valid_shapely'] == True) | (state['error_shapely'] == "fixable"))].index)
 
     c = deepcopy(rank)
 
