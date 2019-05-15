@@ -17,6 +17,7 @@ import glob
 import shutil
 import zipfile
 import json
+import re
 import errno
 import datetime
 import time
@@ -65,9 +66,9 @@ if rank == 0:
 # inputs
 # static for now - could be script args later
 
-stages = "4"
+stages = "7"
 
-version_input = (1, 5, 0)
+version_input = (1, 5, 1)
 
 field_lookup = {
     "raw_file_name": "Processed File Name",
@@ -116,7 +117,7 @@ def geojson_shape_mapping(features):
 
 # prep version
 raw_version_str = "1_5"
-data_version_str = "1_5_0"
+data_version_str = "1_5_1"
 
 # '.'.join(map(str, list(version_input)))
 
@@ -140,12 +141,13 @@ mongo_server = '128.239.108.200'
 
 gb_dir = "/sciclone/aiddata10/REU/geoboundaries"
 
+metadata_filename = "GeoBoundaries Dataset Tracking and Processing - Processed Data.csv"
+
 
 # input
 raw_dir = os.path.join(gb_dir, "raw", raw_version_str)
 
-# metadata_path = os.path.join(raw_dir, "metadata.csv")
-metadata_path = glob.glob(os.path.join(raw_dir, "Metadata/*.xlsx"))[0]
+metadata_path = os.path.join(raw_dir, metadata_filename)
 
 processed_dir = os.path.join(raw_dir, "processed")
 
@@ -452,12 +454,12 @@ if "3" in stages and rank == 0:
     print "Running stage 3..."
 
     # load metadata
-    # full_metadata_src = pd.read_csv(metadata_path, quotechar='\"',
-    #                                 na_values='', keep_default_na=False,
-    #                                 encoding='utf-8')
-    full_metadata_src = pd.read_excel(metadata_path, quotechar='\"',
-                                      na_values='', keep_default_na=False,
-                                      encoding='utf-8')
+    full_metadata_src = pd.read_csv(metadata_path, quotechar='\"',
+                                    na_values='', keep_default_na=False,
+                                    encoding='utf-8')
+    # full_metadata_src = pd.read_excel(metadata_path, quotechar='\"',
+    #                                   na_values='', keep_default_na=False,
+    #                                   encoding='utf-8')
 
     state['metadata'] = None
     state['metadata_error'] = None
@@ -734,7 +736,46 @@ if "6" in stages:
         shutil.copy(metadata_out_path, geoquery_metadata_path)
 
 
+# -------------------------------------
+# stage 7 - merge adm levels to global layer
 
+if "7" in stages:
+
+    merge_src = os.path.join(final_dir, "geojson")
+
+    merge_dict = {}
+    for r, d, f in os.walk(merge_src):
+        for name in f:
+                adm = name[4:8]
+                if adm not in merge_dict:
+                    merge_dict[adm] = []
+                merge_dict[adm].append(os.path.join(r, name))
+
+
+    def build_global(adm):
+        print "Building Global {}".format(adm)
+        merge_json = dict(type='FeatureCollection', features=[])
+
+        merge_path = os.path.join(data_dir, "global", "global_{}.geojson".format(adm))
+        make_dir(os.path.dirname(merge_path))
+
+        for country_file in merge_dict[adm]:
+            with open(country_file) as f:
+                merge_json['features'] += json.load(f)['features']
+
+        with open(merge_path, "w") as f:
+            json.dump(merge_json, f)
+
+
+    qlist = merge_dict.keys()
+
+    c = rank
+    while c < len(qlist):
+        build_global(qlist[c])
+        c += size
+
+    if parallel:
+        comm.Barrier()
 
 
 # -------------------------------------
