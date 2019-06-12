@@ -794,10 +794,21 @@ if "8" in stages:
         make_dir(os.path.dirname(merge_path))
 
         for country_file in topo_search:
-            with open(country_file) as f:
-                country_data = json.load(f)['features']
-                print "{}: {}".format(os.path.basename(country_file), len(country_data))
-                merge_json['features'] += country_data
+            print "{}".format(os.path.basename(country_file))
+            # with open(country_file) as f:
+            #     country_data = json.load(f)['features']
+            #     merge_json['features'] += country_data
+            gdf = gpd.read_file(country_file)
+            gdf['geometry'] = gdf['geometry'].buffer(0)
+            gdf = gdf.loc[gdf['geometry'].is_valid]
+            try:
+                country_data = json.loads(gdf.to_json())['features']
+            except:
+                for ix, i in enumerate(gdf['geometry']):
+                    print ix
+                    print i.__geo_interface__
+
+            merge_json['features'] += country_data
 
         with open(merge_path, "w") as f:
             json.dump(merge_json, f)
