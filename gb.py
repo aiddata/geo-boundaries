@@ -36,20 +36,14 @@ import mpi_utility
 parallel = True
 
 if parallel:
-
     from mpi4py import MPI
-
     comm = MPI.COMM_WORLD
     size = comm.Get_size()
     rank = comm.Get_rank()
-
     if rank == 0:
         print "Running in parallel mode ({} cores)...".format(size)
-
 else:
-
     print "Running in serial mode..."
-
     size = 1
     rank = 0
 
@@ -66,7 +60,7 @@ if rank == 0:
 # inputs
 # static for now - could be script args later
 
-stages = "7"
+stages = "8"
 
 version_input = (1, 5, 1)
 
@@ -102,10 +96,8 @@ def user_prompt_bool(question):
 
 def save_state():
     if parallel: comm.Barrier()
-
     if rank == 0:
         state.to_csv(state_output_path, index=False, encoding='utf-8')
-
     if parallel: comm.Barrier()
 
 
@@ -772,6 +764,48 @@ if "7" in stages:
     c = rank
     while c < len(qlist):
         build_global(qlist[c])
+        c += size
+
+    if parallel:
+        comm.Barrier()
+
+
+
+# -------------------------------------
+# stage 8 - merge topo simplified adm levels to global layer
+
+if "8" in stages:
+
+    topo_dir = os.path.join(final_dir, "geojson_topo")
+
+    qlist = [("ADM2", "quant_5e3_simple_Q80")]
+
+
+    def build_topo_global(topo_data):
+
+        adm_str, topo_str = topo_data
+        topo_regex = topo_dir + "/*/???_{}_{}.geojson".format(adm_str, topo_str)
+        topo_search = glob.glob(topo_regex)
+
+        print "Building Topo Global {} - {}".format(adm_str, topo_str)
+        merge_json = dict(type='FeatureCollection', features=[])
+
+        merge_path = os.path.join(data_dir, "global", "global_{}_{}.geojson".format(adm_str, topo_str))
+        make_dir(os.path.dirname(merge_path))
+
+        for country_file in topo_search:
+            with open(country_file) as f:
+                country_data = json.load(f)['features']
+                print "{}: {}".format(os.path.basename(country_file), len(country_data))
+                merge_json['features'] += country_data
+
+        with open(merge_path, "w") as f:
+            json.dump(merge_json, f)
+
+
+    c = rank
+    while c < len(qlist):
+        build_topo_global(qlist[c])
         c += size
 
     if parallel:
